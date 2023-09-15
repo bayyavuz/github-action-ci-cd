@@ -30,7 +30,7 @@ jobs:
     - run: npm ci
     - run: npm run build --if-present
     - run: npm test
-    - run :npx mocha --reporter mocha-junit-reporter --reporter-options mochaFile=junit.xml
+    - run: npx mocha --reporter mocha-junit-reporter --reporter-options mochaFile=junit.xml
         # Bu komutlarla testleri çalıştırın ve JUnit XML raporunu oluşturun
 
     - name: Upload Test Results
