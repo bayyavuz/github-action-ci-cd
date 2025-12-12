@@ -1,0 +1,87 @@
+name: Copy table between PostgreSQL databases (psql)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_db:
+        description: "Kaynak database 'name' değeri (örnek: db1-eu)"
+        required: true
+        type: string
+      table_name:
+        description: "Kopyalanacak tablo adı (örnek: public.users)"
+        required: true
+        type: string
+
+jobs:
+  copy-table:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install psql and jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client jq
+
+      - name: Copy table using psql
+        env:
+          DATABASES_JSON: ${{ secrets.DATABASES_JSON }}
+          SOURCE_DB_NAME: ${{ github.event.inputs.source_db }}
+          TABLE_NAME: ${{ github.event.inputs.table_name }}
+        run: |
+          set -euo pipefail
+
+          echo "$DATABASES_JSON" > dbs.json
+
+          # 1) Kaynak DB'yi bul
+          SOURCE_JSON=$(jq -c --arg name "$SOURCE_DB_NAME" '.[] | select(.name == $name)' dbs.json)
+
+          if [ -z "$SOURCE_JSON" ]; then
+            echo "ERROR: Source DB with name '$SOURCE_DB_NAME' not found in DATABASES_JSON"
+            exit 1
+          fi
+
+          SRC_HOST=$(echo "$SOURCE_JSON" | jq -r '.host')
+          SRC_PORT=$(echo "$SOURCE_JSON" | jq -r '.port // 5432')
+          SRC_USER=$(echo "$SOURCE_JSON" | jq -r '.user')
+          SRC_PASS=$(echo "$SOURCE_JSON" | jq -r '.password')
+          SRC_DB=$(echo "$SOURCE_JSON" | jq -r '.dbname')
+
+          echo "Source DB: $SOURCE_DB_NAME ($SRC_HOST/$SRC_DB)"
+
+          # 2) Kaynak tablodan CSV export (DBeaver export mantığı)
+          export PGPASSWORD="$SRC_PASS"
+          psql "host=$SRC_HOST port=$SRC_PORT user=$SRC_USER dbname=$SRC_DB" \
+            -c "\copy $TABLE_NAME TO 'table_data.csv' CSV"
+
+          echo "Source data exported to table_data.csv"
+
+          # 3) Target DB'ler: kaynak dışındaki tüm DB'ler
+          jq -c --arg name "$SOURCE_DB_NAME" '.[] | select(.name != $name)' dbs.json | while read -r TGT_JSON; do
+            TGT_NAME=$(echo "$TGT_JSON" | jq -r '.name')
+            TGT_HOST=$(echo "$TGT_JSON" | jq -r '.host')
+            TGT_PORT=$(echo "$TGT_JSON" | jq -r '.port // 5432')
+            TGT_USER=$(echo "$TGT_JSON" | jq -r '.user')
+            TGT_PASS=$(echo "$TGT_JSON" | jq -r '.password')
+            TGT_DB=$(echo "$TGT_JSON" | jq -r '.dbname')
+
+            echo
+            echo "==== Copying to target: $TGT_NAME ($TGT_HOST/$TGT_DB) ===="
+
+            export PGPASSWORD="$TGT_PASS"
+
+            # Önce tabloyu boşalt
+            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB" \
+              -c "TRUNCATE TABLE $TABLE_NAME;"
+
+            # Sonra CSV'den içeri al (DBeaver import mantığı)
+            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB" \
+              -c "\copy $TABLE_NAME FROM 'table_data.csv' CSV"
+
+            echo "Done for $TGT_NAME"
+          done
+
+          echo
+          echo "All targets updated successfully."
