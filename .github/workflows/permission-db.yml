@@ -73,9 +73,9 @@ jobs:
               -v ON_ERROR_STOP=1 \
               -c "TRUNCATE TABLE $SYS_PAGE_TABLE;"
               
-            # psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" \
-            #   -v ON_ERROR_STOP=1 \
-            #   -c "TRUNCATE TABLE $SYS_PAGE_PERM_TABLE;"
+            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" \
+              -v ON_ERROR_STOP=1 \
+              -c "TRUNCATE TABLE $SYS_PAGE_PERM_TABLE;"
 
             # 2.2) Import sırası: önce PARENT, sonra CHILD
             psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" \
