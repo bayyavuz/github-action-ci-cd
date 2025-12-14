@@ -1,16 +1,17 @@
-name: Copy sys_page and sys_page_permission to all targets
+name: Copy sys_page + sys_page_permission to all targets (psql)
 
 on:
   workflow_dispatch:
     inputs:
       source_db:
-        description: "Kaynak database 'name' değeri"
+        description: "Kaynak database 'name' değeri (örn: surms-test)"
         required: true
         type: string
 
 jobs:
   copy-two-tables:
     runs-on: ubuntu-latest
+
     steps:
       - name: Install psql and jq
         run: |
@@ -22,13 +23,13 @@ jobs:
           DATABASES_JSON: ${{ secrets.DATABASES_JSON }}
           SOURCE_DB_NAME: ${{ github.event.inputs.source_db }}
 
-          # === Burayı sabitliyoruz ===
           SYS_PAGE_TABLE: "public.sys_page"
           SYS_PAGE_PERM_TABLE: "public.sys_page_permission"
         run: |
           set -euo pipefail
           echo "$DATABASES_JSON" > dbs.json
 
+          # Kaynak DB'yi bul
           SOURCE_JSON=$(jq -c --arg name "$SOURCE_DB_NAME" '.[] | select(.name == $name)' dbs.json)
           if [ -z "$SOURCE_JSON" ]; then
             echo "ERROR: Source DB with name '$SOURCE_DB_NAME' not found in DATABASES_JSON"
@@ -44,18 +45,15 @@ jobs:
           echo "Source DB: $SOURCE_DB_NAME ($SRC_HOST/$SRC_DB)"
           export PGPASSWORD="$SRC_PASS"
 
-          # 1) Kaynaktan iki tabloyu export et
-          psql "host=$SRC_HOST port=$SRC_PORT user=$SRC_USER dbname=$SRC_DB sslmode=require" \
-            -v ON_ERROR_STOP=1 \
+          echo "Exporting from source..."
+          psql "host=$SRC_HOST port=$SRC_PORT user=$SRC_USER dbname=$SRC_DB sslmode=require" -v ON_ERROR_STOP=1 \
             -c "\copy $SYS_PAGE_TABLE TO 'sys_page.csv' CSV"
-
-          psql "host=$SRC_HOST port=$SRC_PORT user=$SRC_USER dbname=$SRC_DB sslmode=require" \
-            -v ON_ERROR_STOP=1 \
+          psql "host=$SRC_HOST port=$SRC_PORT user=$SRC_USER dbname=$SRC_DB sslmode=require" -v ON_ERROR_STOP=1 \
             -c "\copy $SYS_PAGE_PERM_TABLE TO 'sys_page_permission.csv' CSV"
 
-          echo "Export complete: sys_page.csv + sys_page_permission.csv"
+          echo "Export done."
 
-          # 2) Target DB'lere uygula
+          # Target DB'ler
           jq -c --arg name "$SOURCE_DB_NAME" '.[] | select(.name != $name)' dbs.json | while read -r TGT_JSON; do
             TGT_NAME=$(echo "$TGT_JSON" | jq -r '.name')
             TGT_HOST=$(echo "$TGT_JSON" | jq -r '.host')
@@ -68,22 +66,15 @@ jobs:
             echo "==== Copying to target: $TGT_NAME ($TGT_HOST/$TGT_DB) ===="
             export PGPASSWORD="$TGT_PASS"
 
-            # 2.1) Önce CHILD tabloyu temizle, sonra PARENT
-            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" \
-              -v ON_ERROR_STOP=1 \
-              -c "TRUNCATE TABLE $SYS_PAGE_TABLE;"
-              
-            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" \
-              -v ON_ERROR_STOP=1 \
-              -c "TRUNCATE TABLE $SYS_PAGE_PERM_TABLE;"
+            # ✅ Kritik: FK nedeniyle ikisini aynı statement içinde truncate ediyoruz
+            echo "Running TRUNCATE: TRUNCATE TABLE $SYS_PAGE_PERM_TABLE, $SYS_PAGE_TABLE;"
+            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" -v ON_ERROR_STOP=1 \
+              -c "TRUNCATE TABLE $SYS_PAGE_PERM_TABLE, $SYS_PAGE_TABLE;"
 
-            # 2.2) Import sırası: önce PARENT, sonra CHILD
-            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" \
-              -v ON_ERROR_STOP=1 \
+            # ✅ Import sırası: önce parent, sonra child
+            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" -v ON_ERROR_STOP=1 \
               -c "\copy $SYS_PAGE_TABLE FROM 'sys_page.csv' CSV"
-
-            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" \
-              -v ON_ERROR_STOP=1 \
+            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" -v ON_ERROR_STOP=1 \
               -c "\copy $SYS_PAGE_PERM_TABLE FROM 'sys_page_permission.csv' CSV"
 
             echo "Done for $TGT_NAME"
@@ -91,4 +82,5 @@ jobs:
 
           echo
           echo "All targets updated successfully."
+
 
