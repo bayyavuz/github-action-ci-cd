@@ -18,6 +18,25 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client jq
 
+      - name: Install WireGuard
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wireguard resolvconf
+
+      - name: Write WireGuard config
+        run: |
+          echo "${{ secrets.WG0_CONF }}" | sudo tee /etc/wireguard/wg0.conf > /dev/null
+          sudo chmod 600 /etc/wireguard/wg0.conf
+
+      - name: Bring up WireGuard
+        run: |
+          sudo wg-quick up wg0
+          sudo wg show
+
+      - name: Check outbound IP (should be VPN IP)
+        run: |
+          curl -s https://ifconfig.me
+
       - name: Copy tables
         env:
           DATABASES_JSON: ${{ secrets.DATABASES_JSON }}
