@@ -1,43 +1,35 @@
-name: Copy table between PostgreSQL databases (psql)
+name: Copy sys_page and sys_page_permission to all targets
 
 on:
   workflow_dispatch:
     inputs:
       source_db:
-        description: "Kaynak database 'name' değeri (örnek: db1-eu)"
-        required: true
-        type: string
-      table_name:
-        description: "Kopyalanacak tablo adı (örnek: public.users)"
+        description: "Kaynak database 'name' değeri"
         required: true
         type: string
 
 jobs:
-  copy-table:
+  copy-two-tables:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Install psql and jq
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql-client jq
 
-      - name: Copy table using psql
+      - name: Copy tables
         env:
           DATABASES_JSON: ${{ secrets.DATABASES_JSON }}
           SOURCE_DB_NAME: ${{ github.event.inputs.source_db }}
-          TABLE_NAME: ${{ github.event.inputs.table_name }}
+
+          # === Burayı sabitliyoruz ===
+          SYS_PAGE_TABLE: "public.sys_page"
+          SYS_PAGE_PERM_TABLE: "public.sys_page_permission"
         run: |
           set -euo pipefail
-
           echo "$DATABASES_JSON" > dbs.json
 
-          # 1) Kaynak DB'yi bul
           SOURCE_JSON=$(jq -c --arg name "$SOURCE_DB_NAME" '.[] | select(.name == $name)' dbs.json)
-
           if [ -z "$SOURCE_JSON" ]; then
             echo "ERROR: Source DB with name '$SOURCE_DB_NAME' not found in DATABASES_JSON"
             exit 1
@@ -50,15 +42,20 @@ jobs:
           SRC_DB=$(echo "$SOURCE_JSON" | jq -r '.dbname')
 
           echo "Source DB: $SOURCE_DB_NAME ($SRC_HOST/$SRC_DB)"
-
-          # 2) Kaynak tablodan CSV export (DBeaver export mantığı)
           export PGPASSWORD="$SRC_PASS"
-          psql "host=$SRC_HOST port=$SRC_PORT user=$SRC_USER dbname=$SRC_DB" \
-            -c "\copy $TABLE_NAME TO 'table_data.csv' CSV"
 
-          echo "Source data exported to table_data.csv"
+          # 1) Kaynaktan iki tabloyu export et
+          psql "host=$SRC_HOST port=$SRC_PORT user=$SRC_USER dbname=$SRC_DB sslmode=require" \
+            -v ON_ERROR_STOP=1 \
+            -c "\copy $SYS_PAGE_TABLE TO 'sys_page.csv' CSV"
 
-          # 3) Target DB'ler: kaynak dışındaki tüm DB'ler
+          psql "host=$SRC_HOST port=$SRC_PORT user=$SRC_USER dbname=$SRC_DB sslmode=require" \
+            -v ON_ERROR_STOP=1 \
+            -c "\copy $SYS_PAGE_PERM_TABLE TO 'sys_page_permission.csv' CSV"
+
+          echo "Export complete: sys_page.csv + sys_page_permission.csv"
+
+          # 2) Target DB'lere uygula
           jq -c --arg name "$SOURCE_DB_NAME" '.[] | select(.name != $name)' dbs.json | while read -r TGT_JSON; do
             TGT_NAME=$(echo "$TGT_JSON" | jq -r '.name')
             TGT_HOST=$(echo "$TGT_JSON" | jq -r '.host')
@@ -69,19 +66,29 @@ jobs:
 
             echo
             echo "==== Copying to target: $TGT_NAME ($TGT_HOST/$TGT_DB) ===="
-
             export PGPASSWORD="$TGT_PASS"
 
-            # Önce tabloyu boşalt
-            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB" \
-              -c "TRUNCATE TABLE $TABLE_NAME;"
+            # 2.1) Önce CHILD tabloyu temizle, sonra PARENT
+            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" \
+              -v ON_ERROR_STOP=1 \
+              -c "TRUNCATE TABLE $SYS_PAGE_PERM_TABLE;"
 
-            # Sonra CSV'den içeri al (DBeaver import mantığı)
-            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB" \
-              -c "\copy $TABLE_NAME FROM 'table_data.csv' CSV"
+            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" \
+              -v ON_ERROR_STOP=1 \
+              -c "TRUNCATE TABLE $SYS_PAGE_TABLE;"
+
+            # 2.2) Import sırası: önce PARENT, sonra CHILD
+            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" \
+              -v ON_ERROR_STOP=1 \
+              -c "\copy $SYS_PAGE_TABLE FROM 'sys_page.csv' CSV"
+
+            psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" \
+              -v ON_ERROR_STOP=1 \
+              -c "\copy $SYS_PAGE_PERM_TABLE FROM 'sys_page_permission.csv' CSV"
 
             echo "Done for $TGT_NAME"
           done
 
           echo
           echo "All targets updated successfully."
+
