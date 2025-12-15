@@ -16,15 +16,29 @@ jobs:
 
       - name: Check PR Author
         run: |
-          # Sadece belirli kullanıcıların açtığı PR'lar
-          PR_USER="${{ github.event.workflow_dispatch.user.login }}"
-
-          if [ "$PR_USER" != "mysoly" ] && [ "$PR_USER" != "msklc" ] && [ "$PR_USER" != "bayyavuz" ]; then
-            echo "This PR was opened by '$PR_USER'. Only 'msklc' and 'bayyavuz' are allowed. Failing..."
+          # İş akışını başlatan kullanıcı (manuel tetikleyici)
+          TRIGGER_USER="${{ github.actor }}"
+    
+          # İzin verilen kullanıcılar listesi
+          ALLOWED_USERS=("mysoly" "msklc" "bayyavuz")
+    
+          # Kullanıcının izin verilen listede olup olmadığını kontrol et
+          IS_ALLOWED=false
+    
+          for USER in "${ALLOWED_USERS[@]}"; do
+            if [ "$USER" == "$TRIGGER_USER" ]; then
+              IS_ALLOWED=true
+              break
+            fi
+          done
+    
+          if [ "$IS_ALLOWED" = false ]; then
+            echo "::error::Bu iş akışı '$TRIGGER_USER' tarafından başlatıldı. Sadece ${ALLOWED_USERS[*]} yetkilidir. İşlem İptal Ediliyor."
             exit 1
           fi
-
-          echo "This is a pull request from staging to main and opened by an allowed user. Performing required steps..."
+    
+          echo "Başlatan Kullanıcı: '$TRIGGER_USER'. İşleme devam ediliyor."
+        
       - name: Install psql and jq
         run: |
           sudo apt-get update
