@@ -14,10 +14,10 @@ jobs:
 
     steps:
 
-      - name: Check Branch, Trigger and PR Author
+      - name: Check PR Author
         run: |
           # Sadece belirli kullanıcıların açtığı PR'lar
-          PR_USER="${{ github.event.pull_request.user.login }}"
+          PR_USER="${{ github.event.workflow_dispatch.user.login }}"
 
           if [ "$PR_USER" != "mysoly" ] && [ "$PR_USER" != "msklc" ] && [ "$PR_USER" != "bayyavuz" ]; then
             echo "This PR was opened by '$PR_USER'. Only 'msklc' and 'bayyavuz' are allowed. Failing..."
