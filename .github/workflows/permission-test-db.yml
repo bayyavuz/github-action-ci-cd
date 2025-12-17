@@ -109,7 +109,7 @@ jobs:
           echo "Backup DB selected: $B_NAME ($B_HOST/$B_DB)"
 
           TS=$(date -u +"%Y%m%dT%H%M%SZ")
-          FILE="pre_sync_${B_NAME}_${TS}.dump"
+          FILE="pre_sync_${B_NAME}_${TS}.tar"
 
           export PGPASSWORD="$B_PASS"
 
