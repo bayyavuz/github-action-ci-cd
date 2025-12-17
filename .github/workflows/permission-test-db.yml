@@ -1,4 +1,4 @@
-name: Copy sys_page + sys_page_permission to all targets (psql)
+name: Copy sys_page to all targets (psql)
 
 on:
   workflow_dispatch:
@@ -61,15 +61,21 @@ jobs:
         run: |
           curl -s https://ifconfig.me
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::805845555459:role/7lms-qa-test-role   #${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: eu-central-1
+      # - name: Configure AWS credentials (OIDC)
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: arn:aws:iam::805845555459:role/7lms-qa-test-role   #${{ secrets.AWS_ROLE_TO_ASSUME }}
+      #     aws-region: eu-central-1
 
-      - name: Install AWS CLI (if needed)
+      # - name: Install AWS CLI (if needed)
+      #   run: |
+      #     aws --version || (sudo apt-get update && sudo apt-get install -y awscli)
+
+      - name: Configure AWS credentials
         run: |
-          aws --version || (sudo apt-get update && sudo apt-get install -y awscli)
+         aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+         aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+         aws configure set region eu-central-1
 
       # ✅ KOPYALAMA BAŞLAMADAN ÖNCE: source olmayan bir DB'den (ilk target) 2 tabloyu dump alıp S3'e at
       - name: Backup from a target DB (before sync) and upload to S3
