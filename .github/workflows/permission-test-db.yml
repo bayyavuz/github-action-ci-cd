@@ -1,4 +1,4 @@
-name: Copy sys_page to all targets (psql)
+name: Copy sys_page* to all targets and db dump to s3 
 
 on:
   workflow_dispatch:
