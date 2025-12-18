@@ -9,18 +9,13 @@ on:
         type: string
 
 jobs:
-  copy-two-tables:
+  Check-Author:
     runs-on: ubuntu-latest
-
-    permissions:
-      id-token: write
-      contents: read
-
     steps:
-      - name: Check PR Author
+      - name: Check Author
         run: |
           TRIGGER_USER="${{ github.actor }}"
-          ALLOWED_USERS=("mysoly" "msklc" "bayyavuz")
+          ALLOWED_USERS=("mysoly" "msklc" "bayyavuz" "hayriye")
 
           IS_ALLOWED=false
           for USER in "${ALLOWED_USERS[@]}"; do
@@ -37,6 +32,16 @@ jobs:
 
           echo "Başlatan Kullanıcı: '$TRIGGER_USER'. İşleme devam ediliyor."
 
+          
+  copy-two-tables:
+    needs: [Check-Author]
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
       - name: Install psql and jq
         run: |
           sudo apt-get update
@@ -109,12 +114,12 @@ jobs:
           echo "Backup DB selected: $B_NAME ($B_HOST/$B_DB)"
 
           TS=$(date -u +"%Y%m%dT%H%M%SZ")
-          FILE="pre_sync_${B_NAME}_${TS}.tar" # Uzantıyı .tar yaptık
+          FILE="pre_sync_${B_NAME}_${TS}.dump" 
           export PGPASSWORD="$B_PASS"
 
           pg_dump \
             -h "$B_HOST" -p "$B_PORT" -U "$B_USER" -d "$B_DB" \
-            --format=tar \
+            --format=custom \
             --no-owner --no-privileges \
             -t "$SYS_PAGE_TABLE" \
             -t "$SYS_PAGE_PERM_TABLE" \
