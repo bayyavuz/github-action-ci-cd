@@ -123,7 +123,6 @@ jobs:
           echo "Dump created: $FILE"
 
           DEST="s3://${S3_BUCKET}" 
-          DEST="s3://db-backup-sys-page"
           aws s3 cp "$FILE" "$DEST"
 
           echo "Uploaded to: $DEST"
