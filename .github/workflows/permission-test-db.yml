@@ -193,14 +193,7 @@ jobs:
             psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" -v ON_ERROR_STOP=1 \
               -c "\copy $SYS_PAGE_PERM_TABLE FROM 'sys_page_permission.csv' CSV"
 
-            echo "Done for $TGT_NAME"
-            # Renk ve Stil Kodları
-            BOLD_GREEN='\033[1;32m'
-            BG_BLUE='\033[44m'
-            NC='\033[0m' # Renk Sıfırlama
-
-            echo -e "${BG_BLUE}${BOLD_GREEN}  🚀 DONE FOR $TGT_NAME"  ${NC}"
-          done
+            echo "✅ Success!!! Done for $TGT_NAME"
 
           echo
           echo "✅ Success!! All targets updated successfully."
