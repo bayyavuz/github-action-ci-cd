@@ -134,6 +134,7 @@ jobs:
 
       # ✅ Mevcut çalışan senkronizasyon: source'dan export -> target'lara truncate + copy
       - name: Copy tables
+        id: copy-tables
         env:
           DATABASES_JSON: ${{ secrets.DATABASES_JSON }}
           SOURCE_DB_NAME: ${{ github.event.inputs.source_db }}
@@ -167,7 +168,7 @@ jobs:
           psql "host=$SRC_HOST port=$SRC_PORT user=$SRC_USER dbname=$SRC_DB sslmode=require" -v ON_ERROR_STOP=1 \
             -c "\copy $SYS_PAGE_PERM_TABLE TO 'sys_page_permission.csv' CSV"
 
-          echo "Export done."
+          echo "✅ Export done."
 
           # Target DB'ler
           jq -c --arg name "$SOURCE_DB_NAME" '.[] | select(.name != $name)' dbs.json | while read -r TGT_JSON; do
@@ -194,11 +195,11 @@ jobs:
             psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" -v ON_ERROR_STOP=1 \
               -c "\copy $SYS_PAGE_PERM_TABLE FROM 'sys_page_permission.csv' CSV"
 
-            echo "Done for $TGT_NAME"
+            echo "✅ DONE FOR $TGT_NAME" >> $GITHUB_STEP_SUMMARY 
           done
 
           echo
-          echo "All targets updated successfully."
+          echo "✅ All targets updated successfully." >> $GITHUB_STEP_SUMMARY 
 
       - name: Tear down WireGuard
         if: always()
