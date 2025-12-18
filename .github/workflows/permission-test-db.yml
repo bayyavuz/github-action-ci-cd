@@ -42,12 +42,25 @@ jobs:
       contents: read
 
     steps:
-      - name: Install psql and jq
+      - name: Install PostgreSQL Client 15 and jq
         run: |
+          # PostgreSQL resmi deposunu ekle (v15'i bulabilmesi için)
           sudo apt-get update
-          sudo apt-get install -y postgresql-client jq
-          psql --version
-          pg_dump --version
+          sudo apt-get install -y wget gnupg2
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+    
+          # Özellikle 15 sürümünü kur
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-15 jq
+
+          
+      # - name: Install psql and jq
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install -y postgresql-client jq
+      #     psql --version
+      #     pg_dump --version
 
       - name: Install WireGuard
         run: |
@@ -113,7 +126,7 @@ jobs:
           B_PASS=$(echo "$BACKUP_JSON" | jq -r '.password')
           B_DB=$(echo "$BACKUP_JSON" | jq -r '.dbname')
 
-          echo "✅ Backup DB selected: $B_NAME ($B_HOST/$B_DB)" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Backup DB selected: $B_NAME" >> $GITHUB_STEP_SUMMARY
 
           TS=$(date -u +"%Y%m%dT%H%M%SZ")
           FILE="pre_sync_${B_NAME}_${TS}.dump" 
