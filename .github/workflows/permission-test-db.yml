@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       source_db:
-        description: "Kaynak database 'name' değeri (örn: surms-test)"
+        description: "Source database 'name' (7lms-test,7lms-prod,tijd4-test,tijd4-prod,tuees-test,tuees-prod,tesgerman-test,testgerman-prod,campus-test,campus-prod,surms-test)"
         required: true
         type: string
 
