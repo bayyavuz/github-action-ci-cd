@@ -53,6 +53,8 @@ jobs:
           # Özellikle 15 sürümünü kur
           sudo apt-get update
           sudo apt-get install -y postgresql-client-15 jq
+          psql --version
+          pg_dump --version
 
           
       # - name: Install psql and jq
@@ -129,12 +131,12 @@ jobs:
           echo "✅ Backup DB selected: $B_NAME" >> $GITHUB_STEP_SUMMARY
 
           TS=$(date -u +"%Y%m%dT%H%M%SZ")
-          FILE="pre_sync_${B_NAME}_${TS}.dump" 
+          FILE="pre_sync_${B_NAME}_${TS}.tar" 
           export PGPASSWORD="$B_PASS"
 
           pg_dump \
             -h "$B_HOST" -p "$B_PORT" -U "$B_USER" -d "$B_DB" \
-            --format=custom \
+            --format=tar \
             --no-owner --no-privileges \
             -t "$SYS_PAGE_TABLE" \
             -t "$SYS_PAGE_PERM_TABLE" \
