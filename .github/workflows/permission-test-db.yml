@@ -1,4 +1,4 @@
-name: Copying permissions pipeline
+name: Copy sys_page* to all targets and db dump to s3 
 
 on:
   workflow_dispatch:
@@ -9,13 +9,18 @@ on:
         type: string
 
 jobs:
-  Check-Author:
+  copy-two-tables:
     runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
     steps:
-      - name: Check Author
+      - name: Check PR Author
         run: |
           TRIGGER_USER="${{ github.actor }}"
-          ALLOWED_USERS=("mysoly" "msklc" "bayyavuz" "hayriye")
+          ALLOWED_USERS=("mysoly" "msklc" "bayyavuz")
 
           IS_ALLOWED=false
           for USER in "${ALLOWED_USERS[@]}"; do
@@ -31,16 +36,7 @@ jobs:
           fi
 
           echo "Başlatan Kullanıcı: '$TRIGGER_USER'. İşleme devam ediliyor."
-   
-  copy-permissions-tables:
-    needs: [Check-Author]
-    runs-on: ubuntu-latest
 
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
       - name: Install psql and jq
         run: |
           sudo apt-get update
@@ -90,7 +86,7 @@ jobs:
           SYS_PAGE_TABLE: "public.sys_page"
           SYS_PAGE_PERM_TABLE: "public.sys_page_permission"
 
-          S3_BUCKET: db-backup-sys-page #${{ secrets.S3_BACKUP_BUCKET }}
+          S3_BUCKET: db-backup-sys-page # ${{ secrets.S3_BACKUP_BUCKET }}
           # S3_PREFIX: "pre_sync_backups"
         run: |
           set -euo pipefail
@@ -113,12 +109,12 @@ jobs:
           echo "Backup DB selected: $B_NAME ($B_HOST/$B_DB)"
 
           TS=$(date -u +"%Y%m%dT%H%M%SZ")
-          FILE="pre_sync_${B_NAME}_${TS}.dump"
+          FILE="pre_sync_${B_NAME}_${TS}.tar" # Uzantıyı .tar yaptık
           export PGPASSWORD="$B_PASS"
 
           pg_dump \
             -h "$B_HOST" -p "$B_PORT" -U "$B_USER" -d "$B_DB" \
-            --format=custom \
+            --format=tar \
             --no-owner --no-privileges \
             -t "$SYS_PAGE_TABLE" \
             -t "$SYS_PAGE_PERM_TABLE" \
@@ -127,9 +123,10 @@ jobs:
           echo "Dump created: $FILE"
 
           DEST="s3://${S3_BUCKET}" 
+          DEST="s3://db-backup-sys-page"
           aws s3 cp "$FILE" "$DEST"
 
-          echo "✅ Uploaded to: $DEST"
+          echo "Uploaded to: $DEST"
 
       # ✅ Mevcut çalışan senkronizasyon: source'dan export -> target'lara truncate + copy
       - name: Copy tables
@@ -193,217 +190,13 @@ jobs:
             psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" -v ON_ERROR_STOP=1 \
               -c "\copy $SYS_PAGE_PERM_TABLE FROM 'sys_page_permission.csv' CSV"
 
-            echo "✅ Success!!! Done for $TGT_NAME"
+            echo "Done for $TGT_NAME"
+          done
 
           echo
-          echo "✅ Success!! All targets updated successfully."
-
+          echo "All targets updated successfully."
 
       - name: Tear down WireGuard
         if: always()
         run: |
           sudo wg-quick down wg0 || true
-
-
-# name: Copy sys_page* to all targets and db dump to s3 
-
-# on:
-#   workflow_dispatch:
-#     inputs:
-#       source_db:
-#         description: "Kaynak database 'name' değeri (örn: surms-test)"
-#         required: true
-#         type: string
-
-# jobs:
-#   copy-two-tables:
-#     runs-on: ubuntu-latest
-
-#     permissions:
-#       id-token: write
-#       contents: read
-
-#     steps:
-#       - name: Check PR Author
-#         run: |
-#           TRIGGER_USER="${{ github.actor }}"
-#           ALLOWED_USERS=("mysoly" "msklc" "bayyavuz")
-
-#           IS_ALLOWED=false
-#           for USER in "${ALLOWED_USERS[@]}"; do
-#             if [ "$USER" == "$TRIGGER_USER" ]; then
-#               IS_ALLOWED=true
-#               break
-#             fi
-#           done
-
-#           if [ "$IS_ALLOWED" = false ]; then
-#             echo "::error::Bu iş akışı '$TRIGGER_USER' tarafından başlatıldı. Sadece ${ALLOWED_USERS[*]} yetkilidir. İşlem İptal Ediliyor."
-#             exit 1
-#           fi
-
-#           echo "Başlatan Kullanıcı: '$TRIGGER_USER'. İşleme devam ediliyor."
-
-#       - name: Install psql and jq
-#         run: |
-#           sudo apt-get update
-#           sudo apt-get install -y postgresql-client jq
-
-#       - name: Install WireGuard
-#         run: |
-#           sudo apt-get update
-#           sudo apt-get install -y wireguard resolvconf
-
-#       - name: Write WireGuard config
-#         run: |
-#           echo "${{ secrets.WG0_CONF }}" | sudo tee /etc/wireguard/wg0.conf > /dev/null
-#           sudo chmod 600 /etc/wireguard/wg0.conf
-
-#       - name: Bring up WireGuard
-#         run: |
-#           sudo wg-quick up wg0
-#           sudo wg show
-
-#       - name: Check outbound IP (should be VPN IP)
-#         run: |
-#           curl -s https://ifconfig.me
-
-#       # - name: Configure AWS credentials (OIDC)
-#       #   uses: aws-actions/configure-aws-credentials@v4
-#       #   with:
-#       #     role-to-assume: arn:aws:iam::805845555459:role/7lms-qa-test-role   #${{ secrets.AWS_ROLE_TO_ASSUME }}
-#       #     aws-region: eu-central-1
-
-#       # - name: Install AWS CLI (if needed)
-#       #   run: |
-#       #     aws --version || (sudo apt-get update && sudo apt-get install -y awscli)
-
-#       - name: Configure AWS credentials
-#         run: |
-#          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
-#          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-#          aws configure set region eu-central-1
-
-#       # ✅ KOPYALAMA BAŞLAMADAN ÖNCE: source olmayan bir DB'den (ilk target) 2 tabloyu dump alıp S3'e at
-#       - name: Backup from a target DB (before sync) and upload to S3
-#         env:
-#           DATABASES_JSON: ${{ secrets.DATABASES_JSON }}
-#           SOURCE_DB_NAME: ${{ github.event.inputs.source_db }}
-
-#           SYS_PAGE_TABLE: "public.sys_page"
-#           SYS_PAGE_PERM_TABLE: "public.sys_page_permission"
-
-#           S3_BUCKET: db-backup-sys-page # ${{ secrets.S3_BACKUP_BUCKET }}
-#           # S3_PREFIX: "pre_sync_backups"
-#         run: |
-#           set -euo pipefail
-#           echo "$DATABASES_JSON" > dbs.json
-
-#           # source olmayan ilk DB'yi seç (backup kaynağı)
-#           BACKUP_JSON=$(jq -c --arg name "$SOURCE_DB_NAME" '.[] | select(.name != $name)' dbs.json | head -n 1)
-#           if [ -z "$BACKUP_JSON" ]; then
-#             echo "ERROR: No target DB found to take backup from."
-#             exit 1
-#           fi
-
-#           B_NAME=$(echo "$BACKUP_JSON" | jq -r '.name')
-#           B_HOST=$(echo "$BACKUP_JSON" | jq -r '.host')
-#           B_PORT=$(echo "$BACKUP_JSON" | jq -r '.port // 5432')
-#           B_USER=$(echo "$BACKUP_JSON" | jq -r '.user')
-#           B_PASS=$(echo "$BACKUP_JSON" | jq -r '.password')
-#           B_DB=$(echo "$BACKUP_JSON" | jq -r '.dbname')
-
-#           echo "Backup DB selected: $B_NAME ($B_HOST/$B_DB)"
-
-#           TS=$(date -u +"%Y%m%dT%H%M%SZ")
-#           FILE="pre_sync_${B_NAME}_${TS}.tar" # Uzantıyı .tar yaptık
-#           export PGPASSWORD="$B_PASS"
-
-#           pg_dump \
-#             -h "$B_HOST" -p "$B_PORT" -U "$B_USER" -d "$B_DB" \
-#             --format=tar \
-#             --no-owner --no-privileges \
-#             -t "$SYS_PAGE_TABLE" \
-#             -t "$SYS_PAGE_PERM_TABLE" \
-#             -f "$FILE"
-
-#           echo "Dump created: $FILE"
-
-#           DEST="s3://${S3_BUCKET}" 
-#           DEST="s3://db-backup-sys-page"
-#           aws s3 cp "$FILE" "$DEST"
-
-#           echo "Uploaded to: $DEST"
-
-#       # ✅ Mevcut çalışan senkronizasyon: source'dan export -> target'lara truncate + copy
-#       - name: Copy tables
-#         env:
-#           DATABASES_JSON: ${{ secrets.DATABASES_JSON }}
-#           SOURCE_DB_NAME: ${{ github.event.inputs.source_db }}
-
-#           SYS_PAGE_TABLE: "public.sys_page"
-#           SYS_PAGE_PERM_TABLE: "public.sys_page_permission"
-#         run: |
-#           set -euo pipefail
-#           echo "$DATABASES_JSON" > dbs.json
-
-#           # Kaynak DB'yi bul
-#           SOURCE_JSON=$(jq -c --arg name "$SOURCE_DB_NAME" '.[] | select(.name == $name)' dbs.json)
-#           if [ -z "$SOURCE_JSON" ]; then
-#             echo "ERROR: Source DB with name '$SOURCE_DB_NAME' not found in DATABASES_JSON"
-#             exit 1
-#           fi
-
-#           SRC_HOST=$(echo "$SOURCE_JSON" | jq -r '.host')
-#           SRC_PORT=$(echo "$SOURCE_JSON" | jq -r '.port // 5432')
-#           SRC_USER=$(echo "$SOURCE_JSON" | jq -r '.user')
-#           SRC_PASS=$(echo "$SOURCE_JSON" | jq -r '.password')
-#           SRC_DB=$(echo "$SOURCE_JSON" | jq -r '.dbname')
-
-#           echo "Source DB: $SOURCE_DB_NAME ($SRC_HOST/$SRC_DB)"
-#           export PGPASSWORD="$SRC_PASS"
-
-#           echo "Exporting from source..."
-#           psql "host=$SRC_HOST port=$SRC_PORT user=$SRC_USER dbname=$SRC_DB sslmode=require" -v ON_ERROR_STOP=1 \
-#             -c "\copy $SYS_PAGE_TABLE TO 'sys_page.csv' CSV"
-
-#           psql "host=$SRC_HOST port=$SRC_PORT user=$SRC_USER dbname=$SRC_DB sslmode=require" -v ON_ERROR_STOP=1 \
-#             -c "\copy $SYS_PAGE_PERM_TABLE TO 'sys_page_permission.csv' CSV"
-
-#           echo "Export done."
-
-#           # Target DB'ler
-#           jq -c --arg name "$SOURCE_DB_NAME" '.[] | select(.name != $name)' dbs.json | while read -r TGT_JSON; do
-#             TGT_NAME=$(echo "$TGT_JSON" | jq -r '.name')
-#             TGT_HOST=$(echo "$TGT_JSON" | jq -r '.host')
-#             TGT_PORT=$(echo "$TGT_JSON" | jq -r '.port // 5432')
-#             TGT_USER=$(echo "$TGT_JSON" | jq -r '.user')
-#             TGT_PASS=$(echo "$TGT_JSON" | jq -r '.password')
-#             TGT_DB=$(echo "$TGT_JSON" | jq -r '.dbname')
-
-#             echo
-#             echo "==== Copying to target: $TGT_NAME ($TGT_HOST/$TGT_DB) ===="
-#             export PGPASSWORD="$TGT_PASS"
-
-#             # FK nedeniyle ikisini aynı statement içinde truncate ediyoruz
-#             echo "Running TRUNCATE: TRUNCATE TABLE $SYS_PAGE_PERM_TABLE, $SYS_PAGE_TABLE;"
-#             psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" -v ON_ERROR_STOP=1 \
-#               -c "TRUNCATE TABLE $SYS_PAGE_PERM_TABLE, $SYS_PAGE_TABLE;"
-
-#             # Import sırası: önce parent, sonra child
-#             psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" -v ON_ERROR_STOP=1 \
-#               -c "\copy $SYS_PAGE_TABLE FROM 'sys_page.csv' CSV"
-
-#             psql "host=$TGT_HOST port=$TGT_PORT user=$TGT_USER dbname=$TGT_DB sslmode=require" -v ON_ERROR_STOP=1 \
-#               -c "\copy $SYS_PAGE_PERM_TABLE FROM 'sys_page_permission.csv' CSV"
-
-#             echo "Done for $TGT_NAME"
-#           done
-
-#           echo
-#           echo "All targets updated successfully."
-
-#       - name: Tear down WireGuard
-#         if: always()
-#         run: |
-#           sudo wg-quick down wg0 || true
