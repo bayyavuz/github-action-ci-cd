@@ -111,7 +111,7 @@ jobs:
           B_PASS=$(echo "$BACKUP_JSON" | jq -r '.password')
           B_DB=$(echo "$BACKUP_JSON" | jq -r '.dbname')
 
-          echo "Backup DB selected: $B_NAME ($B_HOST/$B_DB)"
+          echo "✅ Backup DB selected: $B_NAME ($B_HOST/$B_DB)" >> $GITHUB_STEP_SUMMARY
 
           TS=$(date -u +"%Y%m%dT%H%M%SZ")
           FILE="pre_sync_${B_NAME}_${TS}.dump" 
@@ -125,12 +125,12 @@ jobs:
             -t "$SYS_PAGE_PERM_TABLE" \
             -f "$FILE"
 
-          echo "Dump created: $FILE"
+          echo "✅ Dump created: $FILE"
 
           DEST="s3://${S3_BUCKET}" 
           aws s3 cp "$FILE" "$DEST"
 
-          echo "Uploaded to: $DEST"
+          echo "✅ DUMPED TO S3-BUCKET" >> $GITHUB_STEP_SUMMARY
 
       # ✅ Mevcut çalışan senkronizasyon: source'dan export -> target'lara truncate + copy
       - name: Copy tables
